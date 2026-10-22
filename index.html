@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>time</title>
+<link rel="icon" href="data:,">
+<style>
+  :root {
+    --bg: #000000;
+    --off: #2a0b07;
+  }
+  html, body {
+    margin: 0;
+    height: 100%;
+    background: var(--bg);
+  }
+  body {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    padding: 16px;
+    box-sizing: border-box;
+  }
+  .display {
+    display: flex;
+    align-items: center;
+    max-width: 100%;
+  }
+  .group {
+    display: flex;
+    gap: 0.6vw;
+  }
+  .space {
+    width: 2.4vw;
+  }
+  .digit {
+    width: min(7.8vw, 96px, 22vh);
+    height: auto;
+    display: block;
+    overflow: visible;
+  }
+  .seg {
+    fill: var(--off);
+  }
+  .seg.on {
+    fill: url(#lit);
+  }
+  .colon {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 0.9vw;
+    width: 1.6vw;
+    margin: 0 0.4vw;
+  }
+  .dot {
+    width: min(1.6vw, 18px);
+    aspect-ratio: 1;
+    border-radius: 50%;
+    background: var(--off);
+  }
+  .dot.on {
+    background: #ff5a2a;
+    box-shadow: 0 0 3px #ff2a10, 0 0 10px rgba(255, 60, 20, 0.85);
+  }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position: absolute" aria-hidden="true">
+  <defs>
+    <linearGradient id="lit" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffa070"></stop>
+      <stop offset="0.5" stop-color="#ff5a2a"></stop>
+      <stop offset="1" stop-color="#ff2a10"></stop>
+    </linearGradient>
+    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="1.6" result="near"></feGaussianBlur>
+      <feGaussianBlur in="SourceGraphic" stdDeviation="5" result="far"></feGaussianBlur>
+      <feMerge>
+        <feMergeNode in="far"></feMergeNode>
+        <feMergeNode in="near"></feMergeNode>
+        <feMergeNode in="SourceGraphic"></feMergeNode>
+      </feMerge>
+    </filter>
+  </defs>
+</svg>
+<div class="display" id="display"></div>
+
+<script>
+  // Start moment (local time). Change this one line if the real start is different.
+  const START = new Date(2026, 9, 21, 0, 0, 0);
+
+  const KEY = 'last-day-seen';
+  const CELEBRATE_MS = 8000;
+  const NS = 'http://www.w3.org/2000/svg';
+  const T = 7;
+
+  // Seven-segment shapes on a 60 x 100 grid.
+  const h = (x1, x2, y) => [
+    [x1, y + T / 2], [x1 + T / 2, y], [x2 - T / 2, y],
+    [x2, y + T / 2], [x2 - T / 2, y + T], [x1 + T / 2, y + T],
+  ].map(p => p.join(',')).join(' ');
+
+  const v = (x, y1, y2) => [
+    [x, y1 + T / 2], [x + T / 2, y1], [x + T, y1 + T / 2],
+    [x + T, y2 - T / 2], [x + T / 2, y2], [x, y2 - T / 2],
+  ].map(p => p.join(',')).join(' ');
+
+  const SHAPES = {
+    a: h(10, 50, 3),
+    b: v(50, 7, 43),
+    c: v(50, 57, 86),
+    d: h(10, 50, 90),
+    e: v(3, 57, 86),
+    f: v(3, 7, 43),
+    g: h(10, 50, 46.5),
+  };
+
+  const GLYPHS = {
+    0: 'abcdef', 1: 'bc', 2: 'abdeg', 3: 'abcdg', 4: 'bcfg',
+    5: 'acdfg', 6: 'acdefg', 7: 'abc', 8: 'abcdefg', 9: 'abcdfg',
+    A: 'abcefg', b: 'cdefg', C: 'adef', d: 'bcdeg', E: 'adefg',
+    F: 'aefg', H: 'bcefg', L: 'def', O: 'abcdef', P: 'abefg',
+    U: 'bcdef', Y: 'bcdfg', ' ': '',
+  };
+
+  const display = document.getElementById('display');
+  const cells = [];
+  const dots = [];
+
+  function makeCell() {
+    const svg = document.createElementNS(NS, 'svg');
+    svg.setAttribute('viewBox', '0 0 60 100');
+    svg.setAttribute('class', 'digit');
+    const segs = {};
+    for (const key in SHAPES) {
+      const poly = document.createElementNS(NS, 'polygon');
+      poly.setAttribute('points', SHAPES[key]);
+      poly.setAttribute('class', 'seg');
+      svg.appendChild(poly);
+      segs[key] = poly;
+    }
+    const cell = { svg, segs, ch: null };
+    cells.push(cell);
+    return svg;
+  }
+
+  function paint(cell, ch) {
+    if (cell.ch === ch) return;
+    cell.ch = ch;
+    const on = GLYPHS[ch] ?? '';
+    for (const key in cell.segs) {
+      const lit = on.includes(key);
+      cell.segs[key].classList.toggle('on', lit);
+      cell.segs[key].setAttribute('filter', lit ? 'url(#glow)' : 'none');
+    }
+  }
+
+  function makeColon() {
+    const wrap = document.createElement('div');
+    wrap.className = 'colon';
+    for (let i = 0; i < 2; i++) {
+      const dot = document.createElement('div');
+      dot.className = 'dot';
+      wrap.appendChild(dot);
+      dots.push(dot);
+    }
+    return wrap;
+  }
+
+  // Layout: DDDD HH:MM:SS
+  [4, 2, 2, 2].forEach((count, groupIndex) => {
+    if (groupIndex === 1) {
+      const space = document.createElement('div');
+      space.className = 'space';
+      display.appendChild(space);
+    }
+    if (groupIndex > 1) display.appendChild(makeColon());
+    const group = document.createElement('div');
+    group.className = 'group';
+    for (let i = 0; i < count; i++) group.appendChild(makeCell());
+    display.appendChild(group);
+  });
+
+  function loadSeenDay() {
+    try {
+      const raw = localStorage.getItem(KEY);
+      return raw === null ? NaN : Number(raw);
+    } catch {
+      return NaN;
+    }
+  }
+
+  function saveSeenDay(day) {
+    try {
+      localStorage.setItem(KEY, String(day));
+    } catch {
+      // storage blocked: celebration may repeat on reload, nothing else breaks
+    }
+  }
+
+  let seenDay = loadSeenDay();
+  if (Number.isNaN(seenDay)) {
+    seenDay = 0;
+    saveSeenDay(seenDay);
+  }
+
+  let celebration = null;
+  let celebrateUntil = 0;
+
+  function celebrationFor(days) {
+    if (days > 0 && days % 30 === 0) return 'HOLd';
+    if (days > 0 && days % 7 === 0) return `UP ${days / 7}`;
+    return `dAY ${days}`;
+  }
+
+  function frame() {
+    const now = Date.now();
+    const elapsed = Math.max(0, now - START.getTime());
+    const days = Math.floor(elapsed / 864e5);
+    const hours = Math.floor(elapsed / 36e5) % 24;
+    const minutes = Math.floor(elapsed / 6e4) % 60;
+    const seconds = Math.floor(elapsed / 1e3) % 60;
+
+    if (days > seenDay) {
+      seenDay = days;
+      saveSeenDay(days);
+      celebration = celebrationFor(days);
+      celebrateUntil = now + CELEBRATE_MS;
+    }
+
+    const colonsOn = now % 1000 < 500;
+    dots.forEach(dot => dot.classList.toggle('on', colonsOn && now >= celebrateUntil));
+
+    let text;
+    if (now < celebrateUntil) {
+      text = celebration.padStart(10).slice(-10);
+    } else {
+      text = [
+        String(days).padStart(4, '0').slice(-4),
+        String(hours).padStart(2, '0'),
+        String(minutes).padStart(2, '0'),
+        String(seconds).padStart(2, '0'),
+      ].join('');
+    }
+
+    cells.forEach((cell, i) => paint(cell, text[i] ?? ' '));
+  }
+
+  frame();
+  setInterval(frame, 200);
+</script>
+</body>
+</html>
