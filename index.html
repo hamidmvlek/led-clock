@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <meta name="robots" content="noindex">
 <meta name="theme-color" content="#000000">
 <title>time</title>
@@ -18,6 +18,12 @@
     margin: 0;
     height: 100%;
     background: var(--bg);
+    touch-action: none;
+    overscroll-behavior: none;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
   }
   body {
     display: flex;
@@ -331,6 +337,18 @@
     showText(timeCells, [hours, minutes, seconds].map(n => String(n).padStart(2, '0')).join(''));
     showColons(now % 1000 < 500);
   }
+
+  // No zooming: pinch, double-tap, ctrl/cmd + wheel, ctrl/cmd + plus/minus/0.
+  // iOS Safari ignores user-scalable=no, so its gesture events are blocked too.
+  const block = e => e.preventDefault();
+  const opts = { passive: false };
+  ['gesturestart', 'gesturechange', 'gestureend', 'dblclick'].forEach(type =>
+    document.addEventListener(type, block, opts));
+  document.addEventListener('touchmove', e => { if (e.touches.length > 1) e.preventDefault(); }, opts);
+  document.addEventListener('wheel', e => { if (e.ctrlKey) e.preventDefault(); }, opts);
+  document.addEventListener('keydown', e => {
+    if ((e.ctrlKey || e.metaKey) && ['+', '=', '-', '_', '0'].includes(e.key)) e.preventDefault();
+  });
 
   frame();
   setInterval(frame, 50);
